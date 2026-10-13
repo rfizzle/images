@@ -14,10 +14,11 @@ beyond two placeholders.
 
 ```
 images/<name>/
-  versions.yaml      which major streams to build, and tag policy
+  versions.yaml      which major streams to build and tag policy, or `unversioned: true`
   apko.yaml          the image, plain apko config using ${STREAM} and ${PIN}
   apko.dev.yaml      the -dev variant: same image plus shell, apk-tools, git, wget
-  test.sh            smoke test; receives an image reference, exits non-zero on failure
+  test.sh            smoke test; receives an image reference and the stream (empty
+                     for unversioned images), exits non-zero on failure
 scripts/
   matrix.sh          versions.yaml -> GitHub Actions matrix JSON
   build.sh           the one build routine, used by CI and by `make`
@@ -53,6 +54,12 @@ four of its packages so the client, contrib and entrypoint packages stay in step
 
 Adding a stream is one line. Retiring one is deleting a line or setting `eol`.
 
+An image with no upstream version (`static`) sets `unversioned: true` in
+`versions.yaml` instead of `package` and `streams`. It is built with an empty stream
+(`build.sh static ""`), tagged `latest` and the build date, and does not use `${STREAM}`
+or `${PIN}`. The `-dev` variant exists exactly when `images/<name>/apko.dev.yaml`
+exists; `static` has none.
+
 ## What one build does
 
 `scripts/build.sh IMAGE STREAM [VARIANT]` runs the same steps locally and in CI.
@@ -82,6 +89,7 @@ For each stream, every build publishes:
 | `1.27.2-20261013`   | immutable, date-stamped                              |
 | `latest`            | only for the stream marked `latest: true`            |
 | `<tag>-dev`         | the same set for the dev variant                     |
+| `latest`, `20261013` | unversioned images only (`static`): no stream or version tags |
 
 Images live at `ghcr.io/rfizzle/<image>`. Pin by digest in production.
 
@@ -104,6 +112,9 @@ publishing.
 | node     | 26, 24     | nodejs, npm, dumb-init; dev adds yarn, pnpm, build-base    | `node` uid 65532, workdir `/app`      | `node`                           |
 | postgres | 18, 17     | postgresql, -client, -contrib, -oci-entrypoint, gosu, bash | root, entrypoint drops to `postgres` uid 70 | `docker-entrypoint.sh postgres` |
 | valkey   | 9.1, 9.0   | valkey, valkey-cli                                         | `valkey` uid 65532, workdir `/data`   | `valkey-server`                  |
+| python   | 3.15, 3.14       | `python`, py3-pip-wheel; dev adds pip, setuptools, uv, build-base | `nonroot` uid 65532, workdir `/app` | `python`                   |
+| ruby     | 4.0        | `ruby`, ruby-json, yaml; dev adds bundler, jemalloc-dev, build-base | `nonroot` uid 65532, workdir `/work` | `ruby`                  |
+| static   | none       | wolfi-baselayout, ca-certificates-bundle, tzdata           | `nonroot` uid 65532                   | none                             |
 
 Valkey stands in for Redis: Wolfi ships no Redis package, and Valkey is wire-compatible
 with Redis 7.2 clients.

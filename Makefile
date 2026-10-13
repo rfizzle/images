@@ -12,12 +12,12 @@ help: ## Show this help
 tools: ## Download pinned apko and yq into ./.bin (sha256 verified)
 	scripts/tools.sh $(if $(LINT),lint)
 
-build: ## make build IMAGE=go STREAM=1.27 [VARIANT=dev] [PUSH=1]
-	@test -n "$(IMAGE)" -a -n "$(STREAM)" || { echo "usage: make build IMAGE=go STREAM=1.27 [VARIANT=dev] [PUSH=1]" >&2; exit 2; }
+build: ## make build IMAGE=go STREAM=1.27 [VARIANT=dev] [PUSH=1] (no STREAM for static)
+	@test -n "$(IMAGE)" || { echo "usage: make build IMAGE=go STREAM=1.27 [VARIANT=dev] [PUSH=1]  (STREAM is empty for unversioned images: make build IMAGE=static)" >&2; exit 2; }
 	PUSH=$(or $(PUSH),0) scripts/build.sh "$(IMAGE)" "$(STREAM)" $(VARIANT)
 
-lock: ## Render and lock only; prints the resolved version
-	@test -n "$(IMAGE)" -a -n "$(STREAM)" || { echo "usage: make lock IMAGE=go STREAM=1.27 [VARIANT=dev]" >&2; exit 2; }
+lock: ## Render and lock only; prints the resolved version (no STREAM for static)
+	@test -n "$(IMAGE)" || { echo "usage: make lock IMAGE=go STREAM=1.27 [VARIANT=dev]  (STREAM is empty for unversioned images)" >&2; exit 2; }
 	LOCK_ONLY=1 scripts/build.sh "$(IMAGE)" "$(STREAM)" $(VARIANT)
 
 matrix: ## Print the build matrix JSON (filters: IMAGE=, STREAM=)

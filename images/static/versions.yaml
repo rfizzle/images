@@ -1,0 +1,3 @@
+# static has no upstream version. It is rebuilt from the current Wolfi base
+# packages and tagged `latest` and the build date (YYYYMMDD).
+unversioned: true

@@ -3,6 +3,9 @@
 #
 #   scripts/build.sh <image> <stream> [variant]      variant is "" or "dev"
 #
+# <stream> is "" (an empty argument) for images with `unversioned: true` in
+# versions.yaml, and must be one of the listed streams for every other image.
+#
 # Env: PUSH=0|1 (default 0)    REGISTRY (required when PUSH=1, e.g. ghcr.io/alice)
 #      ARCHS (default amd64,arm64)   OUT (default ./out)   SKIP_TESTS=0|1
 #      SOURCE_URL   BUILD_DATE (YYYYMMDD, default today UTC)
@@ -32,24 +35,37 @@ parse_args() {
   if [ "$PUSH" = 1 ] && [ -z "${REGISTRY:-}" ]; then die "REGISTRY is required when PUSH=1"; fi
 
   local versions="$IMAGE_DIR/versions.yaml" found
-  found="$(S="$STREAM" yq '.streams[] | select(.stream == strenv(S)) | .stream' "$versions")"
-  [ -n "$found" ] || die "stream '$STREAM' is not listed in $versions"
-  PACKAGE="$(yq '.package' "$versions")"
-  PIN="$(S="$STREAM" yq '.streams[] | select(.stream == strenv(S)) | .pin // ""' "$versions")"
-  LATEST="$(S="$STREAM" yq '.streams[] | select(.stream == strenv(S)) | .latest // false' "$versions")"
-  [ -z "$PIN" ] || PIN="~$PIN"
+  UNVERSIONED="$(yq '.unversioned // false' "$versions")"
+  if [ "$UNVERSIONED" = true ]; then
+    # No upstream version: no stream, package family or pin; always tagged latest.
+    [ -z "$STREAM" ] || die "$IMAGE is unversioned; pass an empty stream, got '$STREAM'"
+    PACKAGE=""
+    PIN=""
+    LATEST=true
+  else
+    [ -n "$STREAM" ] || die "$IMAGE is versioned; a stream is required"
+    found="$(S="$STREAM" yq '.streams[] | select(.stream == strenv(S)) | .stream' "$versions")"
+    [ -n "$found" ] || die "stream '$STREAM' is not listed in $versions"
+    PACKAGE="$(yq '.package' "$versions")"
+    PIN="$(S="$STREAM" yq '.streams[] | select(.stream == strenv(S)) | .pin // ""' "$versions")"
+    LATEST="$(S="$STREAM" yq '.streams[] | select(.stream == strenv(S)) | .latest // false' "$versions")"
+    [ -z "$PIN" ] || PIN="~$PIN"
+  fi
 
   SUFFIX=""
   CONFIG_SRC="$IMAGE_DIR/apko.yaml"
   if [ -n "$VARIANT" ]; then
     SUFFIX="-dev"
     CONFIG_SRC="$IMAGE_DIR/apko.dev.yaml"
+    [ -f "$CONFIG_SRC" ] || die "$IMAGE has no dev variant (missing $CONFIG_SRC)"
   fi
   NAME="$IMAGE-$STREAM$SUFFIX"
+  if [ "$UNVERSIONED" = true ]; then NAME="$IMAGE$SUFFIX"; fi
   mkdir -p "$OUT"
 }
 
 # ---- 2. Render ${STREAM}, ${PIN}, ${SOURCE_URL} into a working copy --------
+# Unversioned images do not use ${STREAM} or ${PIN}; the substitutions are no-ops.
 default_source_url() {
   if [ -n "${GITHUB_SERVER_URL:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
     echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -86,6 +102,13 @@ lock() {
   LOCKFILE="$OUT/$NAME.lock.json"
   apko lock "$CONFIG" --output "$LOCKFILE" >&2
 
+  # Unversioned images have no stream package to read a version from.
+  if [ "$UNVERSIONED" = true ]; then
+    RESOLVED=""
+    FULL=""
+    return 0
+  fi
+
   local pkg="$PACKAGE-$STREAM" versions count
   versions="$(P="$pkg" yq -p json -o yaml '.contents.packages[] | select(.name == strenv(P)) | .architecture + " " + .version' "$LOCKFILE")"
   [ -n "$versions" ] || die "package $pkg not found in $LOCKFILE"
@@ -94,8 +117,9 @@ lock() {
   count="$(cut -d' ' -f2 <<<"$versions" | sort -u | wc -l | tr -d ' ')"
   [ "$count" = 1 ] || die "architectures resolved different versions of $pkg: $(tr '\n' ';' <<<"$versions")"
 
-  RESOLVED="$(head -n1 <<<"$versions" | cut -d' ' -f2)" # e.g. 1.27.2-r0
+  RESOLVED="$(head -n1 <<<"$versions" | cut -d' ' -f2)" # e.g. 1.27.2-r0, 3.15.0_git20261010-r0
   FULL="${RESOLVED%-r*}"                                  # e.g. 1.27.2
+  FULL="${FULL%%_*}"                                      # drop snapshot suffix: 3.15.0
   case "$FULL" in
     "$STREAM".*) ;;
     *) die "resolved version $FULL does not start with '$STREAM.'" ;;
@@ -104,6 +128,11 @@ lock() {
 
 # ---- 4. Tags ---------------------------------------------------------------
 make_tags() {
+  if [ "$UNVERSIONED" = true ]; then
+    TAGS=("latest$SUFFIX" "$BUILD_DATE$SUFFIX")
+    printf '%s\n' "${TAGS[@]}" >"$OUT/$NAME.tags"
+    return
+  fi
   TAGS=("$STREAM$SUFFIX" "$FULL$SUFFIX")
   TAGS+=("$FULL-$BUILD_DATE$SUFFIX")
   if [ "$LATEST" = true ]; then TAGS+=("latest$SUFFIX"); fi
@@ -180,15 +209,15 @@ publish() {
 # ---- 8. Summary ------------------------------------------------------------
 summary() {
   local tags_joined="${TAGS[*]}"
-  printf '\n%-10s %-7s %-10s %-8s %s\n' IMAGE STREAM RESOLVED VARIANT DIGEST
-  printf '%-10s %-7s %-10s %-8s %s\n' "$IMAGE" "$STREAM" "$FULL" "${VARIANT:--}" "${DIGEST:--}"
+  printf '\n%-10s %-7s %-22s %-8s %s\n' IMAGE STREAM RESOLVED VARIANT DIGEST
+  printf '%-10s %-7s %-22s %-8s %s\n' "$IMAGE" "${STREAM:--}" "${RESOLVED:--}" "${VARIANT:--}" "${DIGEST:--}"
   echo "tags: $tags_joined"
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     if [ ! -s "$GITHUB_STEP_SUMMARY" ]; then
       printf '| Image | Stream | Resolved | Variant | Tags | Digest |\n|---|---|---|---|---|---|\n' >>"$GITHUB_STEP_SUMMARY"
     fi
     # shellcheck disable=SC2016 # backticks are literal markdown
-    printf '| %s | %s | %s | %s | %s | %s |\n' "$IMAGE" "$STREAM" "$FULL" "${VARIANT:--}" \
+    printf '| %s | %s | %s | %s | %s | %s |\n' "$IMAGE" "${STREAM:--}" "${RESOLVED:--}" "${VARIANT:--}" \
       "$(printf '`%s` ' "${TAGS[@]}")" "${DIGEST:+\`$DIGEST\`}" >>"$GITHUB_STEP_SUMMARY"
   fi
   if [ -n "${GITHUB_OUTPUT:-}" ]; then
@@ -207,7 +236,11 @@ main() {
   render
   lock
   if [ "$LOCK_ONLY" = 1 ]; then
-    echo "$IMAGE $STREAM${VARIANT:+ $VARIANT}: $PACKAGE-$STREAM resolved to $FULL ($RESOLVED)"
+    if [ "$UNVERSIONED" = true ]; then
+      echo "$IMAGE${VARIANT:+ $VARIANT}: unversioned, locked $LOCKFILE"
+    else
+      echo "$IMAGE $STREAM${VARIANT:+ $VARIANT}: $PACKAGE-$STREAM resolved to $FULL ($RESOLVED)"
+    fi
     return 0
   fi
   make_tags

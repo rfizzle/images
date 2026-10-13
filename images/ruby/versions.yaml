@@ -1,0 +1,4 @@
+package: ruby
+streams:
+  - stream: "4.0"
+    latest: true

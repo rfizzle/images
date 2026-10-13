@@ -9,7 +9,8 @@ on:
         required: true
       stream:
         type: string
-        required: true
+        required: false
+        default: ""
       variant:
         type: string
         required: false
@@ -43,7 +44,8 @@ jobs:
           OWNER: ${{ github.repository_owner }}
         run: |
           owner="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
-          name="$IMAGE-$STREAM"
+          name="$IMAGE"
+          if [ -n "$STREAM" ]; then name="$name-$STREAM"; fi
           if [ -n "$VARIANT" ]; then name="$name-$VARIANT"; fi
           {
             echo "registry=ghcr.io/$owner"
