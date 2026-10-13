@@ -6,19 +6,18 @@ Container images built the way Chainguard builds theirs: declarative
 Wolfi packages, signed with cosign, attested, and published with an SBOM to GitHub
 Container Registry. The design is in [docs/DESIGN.md](docs/DESIGN.md).
 
-In this README `<owner>` is a placeholder for the GitHub user that owns this repository.
 
 ## Images
 
 | Image    | Streams    | Pull                                  |
 |----------|------------|---------------------------------------|
-| go       | 1.27, 1.26 | `ghcr.io/<owner>/go:<stream>`         |
-| node     | 26, 24     | `ghcr.io/<owner>/node:<stream>`       |
-| postgres | 18, 17     | `ghcr.io/<owner>/postgres:<stream>`   |
-| valkey   | 9.1, 9.0   | `ghcr.io/<owner>/valkey:<stream>`     |
+| go       | 1.27, 1.26 | `ghcr.io/rfizzle/go:<stream>`         |
+| node     | 26, 24     | `ghcr.io/rfizzle/node:<stream>`       |
+| postgres | 18, 17     | `ghcr.io/rfizzle/postgres:<stream>`   |
+| valkey   | 9.1, 9.0   | `ghcr.io/rfizzle/valkey:<stream>`     |
 
 Each image also has a `-dev` variant (shell, apk-tools, git, wget, and more) under the
-`-dev` tags, for example `ghcr.io/<owner>/go:1.27-dev`.
+`-dev` tags, for example `ghcr.io/rfizzle/go:1.27-dev`.
 
 ## Tags
 
@@ -56,7 +55,7 @@ Pin by digest in production.
 make tools                          # apko and yq into ./.bin, sha256 verified
 make lock IMAGE=go STREAM=1.27      # resolve packages, print the resolved version
 make build IMAGE=go STREAM=1.27     # build and test (needs Docker); add VARIANT=dev
-make build IMAGE=go STREAM=1.27 PUSH=1 REGISTRY=ghcr.io/<owner>   # publish
+make build IMAGE=go STREAM=1.27 PUSH=1 REGISTRY=ghcr.io/rfizzle   # publish
 make matrix                         # the build matrix as JSON
 make lint                           # shellcheck and actionlint, if installed
 ```
@@ -67,12 +66,12 @@ Docker smoke test. `make tools LINT=1` also installs shellcheck and actionlint.
 ## Verify signatures and SBOM
 
 ```sh
-cosign verify ghcr.io/<owner>/go:1.27 \
-  --certificate-identity-regexp '^https://github.com/<owner>/images/\.github/workflows/' \
+cosign verify ghcr.io/rfizzle/go:1.27 \
+  --certificate-identity-regexp '^https://github.com/rfizzle/images/\.github/workflows/' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
-cosign download sbom ghcr.io/<owner>/go:1.27
-gh attestation verify oci://ghcr.io/<owner>/go:1.27 --repo <owner>/images
+cosign download sbom ghcr.io/rfizzle/go:1.27
+gh attestation verify oci://ghcr.io/rfizzle/go:1.27 --repo rfizzle/images
 ```
 
 ## Schedule

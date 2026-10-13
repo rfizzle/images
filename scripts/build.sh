@@ -65,7 +65,7 @@ default_source_url() {
     echo "$remote"
     return
   fi
-  echo "https://github.com/OWNER/images"
+  echo "https://github.com/rfizzle/images"
 }
 
 # Escape a value for the right-hand side of a sed s|||g expression.

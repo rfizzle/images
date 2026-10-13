@@ -83,7 +83,7 @@ For each stream, every build publishes:
 | `latest`            | only for the stream marked `latest: true`            |
 | `<tag>-dev`         | the same set for the dev variant                     |
 
-Images live at `ghcr.io/<owner>/<image>`. Pin by digest in production.
+Images live at `ghcr.io/rfizzle/<image>`. Pin by digest in production.
 
 ## Schedule
 
