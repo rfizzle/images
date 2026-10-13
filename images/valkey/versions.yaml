@@ -1,0 +1,5 @@
+package: valkey
+streams:
+  - stream: "9.1"
+    latest: true
+  - stream: "9.0"

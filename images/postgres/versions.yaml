@@ -1,0 +1,5 @@
+package: postgresql
+streams:
+  - stream: "18"
+    latest: true
+  - stream: "17"

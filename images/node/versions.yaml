@@ -1,0 +1,5 @@
+package: nodejs
+streams:
+  - stream: "26"
+    latest: true
+  - stream: "24"

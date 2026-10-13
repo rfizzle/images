@@ -1,0 +1,68 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install linters
+        run: make tools LINT=1
+      - run: make lint
+
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Matrix for changed images
+        id: matrix
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A new branch push has an all-zero "before"; fall back to the parent commit.
+          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ]; then
+            BASE="$(git rev-parse HEAD~1 2>/dev/null || git hash-object -t tree /dev/null)"
+          fi
+          rows=()
+          while read -r image; do
+            [ -n "$image" ] || continue
+            rows+=("$(IMAGE="$image" scripts/matrix.sh)")
+          done < <(scripts/changed-images.sh "$BASE")
+          if [ "${#rows[@]}" -eq 0 ]; then
+            matrix='[]'
+          else
+            matrix="$(printf '%s\n' "${rows[@]}" | yq -p json -o json -I0 ea '[.[]] | flatten' -)"
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [lint, changes]
+    if: needs.changes.outputs.matrix != '[]'
+    name: ${{ matrix.image }} ${{ matrix.stream }} ${{ matrix.variant }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJson(needs.changes.outputs.matrix) }}
+    uses: ./.github/workflows/build.yaml
+    with:
+      image: ${{ matrix.image }}
+      stream: ${{ matrix.stream }}
+      variant: ${{ matrix.variant }}
+      push: ${{ github.event_name == 'push' }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write

@@ -1,0 +1,9 @@
+package: go
+streams:
+  - stream: "1.27"
+    latest: true
+  - stream: "1.26"
+  # Optional keys, shown on a hypothetical older stream:
+  #  - stream: "1.25"
+  #    pin: "1.25.12"     # hold the stream at this minor (apk fuzzy match ~)
+  #    eol: 2027-02-01    # skipped after this date; published tags are never removed

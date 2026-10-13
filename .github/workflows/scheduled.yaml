@@ -1,0 +1,59 @@
+# Rebuild and publish every image and stream every Monday so they pick up the
+# latest Wolfi packages. workflow_dispatch allows an urgent rebuild of one
+# image and/or stream.
+name: scheduled
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Only build this image (empty for all)
+        required: false
+        type: string
+      stream:
+        description: Only build this stream (empty for all)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build matrix
+        id: matrix
+        env:
+          IMAGE: ${{ inputs.image }}
+          STREAM: ${{ inputs.stream }}
+        run: echo "matrix=$(scripts/matrix.sh)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: matrix
+    if: needs.matrix.outputs.matrix != '[]'
+    name: ${{ matrix.image }} ${{ matrix.stream }} ${{ matrix.variant }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJson(needs.matrix.outputs.matrix) }}
+    uses: ./.github/workflows/build.yaml
+    with:
+      image: ${{ matrix.image }}
+      stream: ${{ matrix.stream }}
+      variant: ${{ matrix.variant }}
+      push: true
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
